@@ -4,9 +4,6 @@
 local updateInterval = 3 -- seconds
 local DEBUG = true -- Set to false to disable debug messages
 
--- File will be saved in the current DCS mission directory
-local logFilePath = "unit_group_mapping.xml"
-
 -- Function to output debug messages to both outMessage and log
 local function debugMsg(message)
     if DEBUG then
@@ -150,25 +147,14 @@ local function writeXMLFile(data)
     
     xml = xml .. '</dcs_mapping>\n'
     
-    debugMsg("Writing XML with " .. groupCount .. " groups and " .. unitCount .. " units...")
+    debugMsg("Outputting XML with " .. groupCount .. " groups and " .. unitCount .. " units to DCS log...")
     
-    -- Write to XML file
-    local file = io.open(logFilePath, "w")
-    if file then
-        file:write(xml)
-        file:close()
-        debugMsg("XML file successfully written to: " .. logFilePath)
-        env.info("DCS Unit/Group mapping updated: " .. logFilePath)
-    else
-        local errorMsg = "Failed to write to " .. logFilePath
-        debugMsg("ERROR: " .. errorMsg)
-        env.error(errorMsg)
-    end
-    
-    -- Also output XML to DCS log with special markers for external parsing (backup method)
+    -- Output XML to DCS log with special markers for external parsing
     env.info("=== DCS_MAPPER_XML_START ===")
     env.info(xml)
     env.info("=== DCS_MAPPER_XML_END ===")
+    
+    debugMsg("XML data successfully logged to DCS log (look for DCS_MAPPER_XML markers)")
 end
 
 -- Main update function
@@ -199,5 +185,5 @@ timer.scheduleFunction(function()
     return timer.getTime() + updateInterval
 end, nil, timer.getTime() + updateInterval)
 
-debugMsg("DCS Unit/Group ID Mapper started. Update interval: " .. updateInterval .. "s, XML file: " .. logFilePath)
-env.info("DCS Unit/Group ID Mapper started. XML file: " .. logFilePath) 
+debugMsg("DCS Unit/Group ID Mapper started. Update interval: " .. updateInterval .. "s")
+env.info("DCS Unit/Group ID Mapper started. Logging to DCS log with XML markers") 
