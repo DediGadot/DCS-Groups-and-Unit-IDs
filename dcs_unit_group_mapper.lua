@@ -3,6 +3,25 @@
 
 local logFile = "unit_group_mapping.xml"
 local updateInterval = 3 -- seconds
+local DEBUG = true -- Set to false to disable debug messages
+
+-- Function to output debug messages to both outMessage and log
+local function debugMsg(message)
+    if DEBUG then
+        local missionTime = timer.getAbsTime()
+        local hours = math.floor(missionTime / 3600)
+        local minutes = math.floor((missionTime % 3600) / 60)
+        local seconds = math.floor(missionTime % 60)
+        local timestamp = string.format("%02d:%02d:%02d", hours, minutes, seconds)
+        local formattedMsg = "[DCS Mapper " .. timestamp .. "] " .. message
+        
+        -- Output to player message
+        trigger.action.outText(formattedMsg, 10)
+        
+        -- Output to log file
+        env.info(formattedMsg)
+    end
+end
 
 -- Function to escape XML special characters
 local function escapeXML(str)
@@ -18,17 +37,28 @@ end
 
 -- Function to get all units and groups data
 local function getUnitsAndGroups()
+    debugMsg("Starting data collection...")
+    
     local data = {
         units = {},
         groups = {}
     }
     
+    local totalGroups = 0
+    local totalUnits = 0
+    
     -- Get all coalitions
     local coalitions = {coalition.side.RED, coalition.side.BLUE, coalition.side.NEUTRAL}
     
     for _, coalitionSide in ipairs(coalitions) do
+        local coalitionName = (coalitionSide == coalition.side.RED and "RED") or 
+                             (coalitionSide == coalition.side.BLUE and "BLUE") or "NEUTRAL"
+        debugMsg("Processing " .. coalitionName .. " coalition...")
+        
         -- Get all groups for this coalition
         local groups = coalition.getGroups(coalitionSide)
+        local coalitionGroups = 0
+        local coalitionUnits = 0
         
         for _, group in ipairs(groups) do
             if group and group:isExist() then
@@ -42,6 +72,7 @@ local function getUnitsAndGroups()
                     category = groupCategory,
                     coalition = coalitionSide
                 }
+                coalitionGroups = coalitionGroups + 1
                 
                 -- Get all units in this group
                 local units = group:getUnits()
@@ -59,32 +90,51 @@ local function getUnitsAndGroups()
                             groupName = groupName,
                             coalition = coalitionSide
                         }
+                        coalitionUnits = coalitionUnits + 1
                     end
                 end
             end
         end
+        
+        debugMsg(coalitionName .. " coalition: " .. coalitionGroups .. " groups, " .. coalitionUnits .. " units")
+        totalGroups = totalGroups + coalitionGroups
+        totalUnits = totalUnits + coalitionUnits
     end
+    
+    debugMsg("Data collection complete: " .. totalGroups .. " total groups, " .. totalUnits .. " total units")
     
     return data
 end
 
 -- Function to write XML to file
 local function writeXMLFile(data)
+    debugMsg("Generating XML output...")
+    
+    local missionTime = timer.getAbsTime()
+    local totalSeconds = math.floor(missionTime)
+    local hours = math.floor(totalSeconds / 3600)
+    local minutes = math.floor((totalSeconds % 3600) / 60)
+    local seconds = totalSeconds % 60
+    local timestamp = string.format("Mission Time %02d:%02d:%02d", hours, minutes, seconds)
+    
     local xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
-    xml = xml .. '<dcs_mapping timestamp="' .. escapeXML(os.date("%Y-%m-%d %H:%M:%S")) .. '">\n'
+    xml = xml .. '<dcs_mapping timestamp="' .. escapeXML(timestamp) .. '">\n'
     
     -- Write groups section
     xml = xml .. '  <groups>\n'
+    local groupCount = 0
     for groupId, groupData in pairs(data.groups) do
         xml = xml .. '    <group id="' .. escapeXML(groupId) .. '" '
         xml = xml .. 'name="' .. escapeXML(groupData.name) .. '" '
         xml = xml .. 'category="' .. escapeXML(groupData.category) .. '" '
         xml = xml .. 'coalition="' .. escapeXML(groupData.coalition) .. '"/>\n'
+        groupCount = groupCount + 1
     end
     xml = xml .. '  </groups>\n'
     
     -- Write units section
     xml = xml .. '  <units>\n'
+    local unitCount = 0
     for unitId, unitData in pairs(data.units) do
         xml = xml .. '    <unit id="' .. escapeXML(unitId) .. '" '
         xml = xml .. 'name="' .. escapeXML(unitData.name) .. '" '
@@ -92,35 +142,48 @@ local function writeXMLFile(data)
         xml = xml .. 'group_id="' .. escapeXML(unitData.groupId) .. '" '
         xml = xml .. 'group_name="' .. escapeXML(unitData.groupName) .. '" '
         xml = xml .. 'coalition="' .. escapeXML(unitData.coalition) .. '"/>\n'
+        unitCount = unitCount + 1
     end
     xml = xml .. '  </units>\n'
     
     xml = xml .. '</dcs_mapping>\n'
+    
+    debugMsg("Writing XML file with " .. groupCount .. " groups and " .. unitCount .. " units...")
     
     -- Write to file
     local file = io.open(logFile, "w")
     if file then
         file:write(xml)
         file:close()
+        debugMsg("XML file successfully written to: " .. logFile)
         env.info("DCS Unit/Group mapping updated: " .. logFile)
     else
-        env.error("Failed to write to " .. logFile)
+        local errorMsg = "Failed to write to " .. logFile
+        debugMsg("ERROR: " .. errorMsg)
+        env.error(errorMsg)
     end
 end
 
 -- Main update function
 local function updateMapping()
+    debugMsg("Starting mapping update cycle...")
+    
     local success, result = pcall(function()
         local data = getUnitsAndGroups()
         writeXMLFile(data)
     end)
     
     if not success then
-        env.error("Error updating unit/group mapping: " .. tostring(result))
+        local errorMsg = "Error updating unit/group mapping: " .. tostring(result)
+        debugMsg("ERROR: " .. errorMsg)
+        env.error(errorMsg)
+    else
+        debugMsg("Mapping update cycle completed successfully")
     end
 end
 
 -- Initial update
+debugMsg("DCS Unit/Group ID Mapper initializing...")
 updateMapping()
 
 -- Schedule periodic updates
@@ -129,4 +192,5 @@ timer.scheduleFunction(function()
     return timer.getTime() + updateInterval
 end, nil, timer.getTime() + updateInterval)
 
+debugMsg("DCS Unit/Group ID Mapper started. Update interval: " .. updateInterval .. "s, Logging to: " .. logFile)
 env.info("DCS Unit/Group ID Mapper started. Logging to: " .. logFile) 
