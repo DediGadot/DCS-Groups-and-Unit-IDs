@@ -41,8 +41,6 @@ end
 
 -- Function to get all units and groups data and accumulate in persistent tables
 local function getUnitsAndGroups()
-    debugMsg("Starting data collection and aggregation...")
-    
     local currentTime = timer.getAbsTime()
     local currentUnits = {}
     local currentGroups = {}
@@ -53,25 +51,21 @@ local function getUnitsAndGroups()
     local coalitions = {coalition.side.RED, coalition.side.BLUE, coalition.side.NEUTRAL}
     
     for _, coalitionSide in ipairs(coalitions) do
-        local coalitionName = (coalitionSide == coalition.side.RED and "RED") or 
-                             (coalitionSide == coalition.side.BLUE and "BLUE") or "NEUTRAL"
-        debugMsg("Processing " .. coalitionName .. " coalition...")
-        
         -- Get all groups for this coalition
         local groups = coalition.getGroups(coalitionSide)
         
         for _, group in ipairs(groups) do
             if group and group:isExist() then
-                local groupId = group:getID()
+                local groupObjectId = group:getObjectID()
                 local groupName = group:getName()
                 local groupCategory = group:getCategory()
                 
                 -- Mark this group as currently active
-                currentGroups[groupId] = true
+                currentGroups[groupObjectId] = true
                 
                 -- Add or update group in persistent table
-                if not allGroups[groupId] then
-                    allGroups[groupId] = {
+                if not allGroups[groupObjectId] then
+                    allGroups[groupObjectId] = {
                         name = groupName,
                         category = groupCategory,
                         coalition = coalitionSide,
@@ -80,30 +74,29 @@ local function getUnitsAndGroups()
                         active = true
                     }
                     newGroupsCount = newGroupsCount + 1
-                    debugMsg("New group discovered: " .. groupName .. " (ID: " .. groupId .. ")")
                 else
                     -- Update existing group
-                    allGroups[groupId].lastSeen = currentTime
-                    allGroups[groupId].active = true
+                    allGroups[groupObjectId].lastSeen = currentTime
+                    allGroups[groupObjectId].active = true
                 end
                 
                 -- Get all units in this group
                 local units = group:getUnits()
                 for _, unit in ipairs(units) do
                     if unit and unit:isExist() then
-                        local unitId = unit:getID()
+                        local unitObjectId = unit:getObjectID()
                         local unitName = unit:getName()
                         local unitType = unit:getTypeName()
                         
                         -- Mark this unit as currently active
-                        currentUnits[unitId] = true
+                        currentUnits[unitObjectId] = true
                         
                         -- Add or update unit in persistent table
-                        if not allUnits[unitId] then
-                            allUnits[unitId] = {
+                        if not allUnits[unitObjectId] then
+                            allUnits[unitObjectId] = {
                                 name = unitName,
                                 type = unitType,
-                                groupId = groupId,
+                                groupObjectId = groupObjectId,
                                 groupName = groupName,
                                 coalition = coalitionSide,
                                 firstSeen = currentTime,
@@ -111,11 +104,10 @@ local function getUnitsAndGroups()
                                 active = true
                             }
                             newUnitsCount = newUnitsCount + 1
-                            debugMsg("New unit discovered: " .. unitName .. " (ID: " .. unitId .. ")")
                         else
                             -- Update existing unit
-                            allUnits[unitId].lastSeen = currentTime
-                            allUnits[unitId].active = true
+                            allUnits[unitObjectId].lastSeen = currentTime
+                            allUnits[unitObjectId].active = true
                         end
                     end
                 end
@@ -124,20 +116,14 @@ local function getUnitsAndGroups()
     end
     
     -- Mark units and groups that are no longer active
-    for unitId, unitData in pairs(allUnits) do
-        if not currentUnits[unitId] then
-            if unitData.active then
-                debugMsg("Unit no longer active: " .. unitData.name .. " (ID: " .. unitId .. ")")
-            end
+    for unitObjectId, unitData in pairs(allUnits) do
+        if not currentUnits[unitObjectId] then
             unitData.active = false
         end
     end
     
-    for groupId, groupData in pairs(allGroups) do
-        if not currentGroups[groupId] then
-            if groupData.active then
-                debugMsg("Group no longer active: " .. groupData.name .. " (ID: " .. groupId .. ")")
-            end
+    for groupObjectId, groupData in pairs(allGroups) do
+        if not currentGroups[groupObjectId] then
             groupData.active = false
         end
     end
@@ -164,10 +150,8 @@ local function getUnitsAndGroups()
         end
     end
     
-    debugMsg("Aggregation complete: " .. totalGroups .. " total groups (" .. activeGroups .. " active), " .. 
-             totalUnits .. " total units (" .. activeUnits .. " active)")
     if newGroupsCount > 0 or newUnitsCount > 0 then
-        debugMsg("New this cycle: " .. newGroupsCount .. " groups, " .. newUnitsCount .. " units")
+        debugMsg("New discoveries: " .. newGroupsCount .. " groups, " .. newUnitsCount .. " units")
     end
     
     lastUpdateTime = currentTime
@@ -180,8 +164,6 @@ end
 
 -- Function to write XML to file
 local function writeXMLFile(data)
-    debugMsg("Generating aggregated XML output...")
-    
     local missionTime = timer.getAbsTime()
     local totalSeconds = math.floor(missionTime)
     local hours = math.floor(totalSeconds / 3600)
@@ -196,8 +178,8 @@ local function writeXMLFile(data)
     xml = xml .. '  <groups>\n'
     local groupCount = 0
     local activeGroupCount = 0
-    for groupId, groupData in pairs(data.groups) do
-        xml = xml .. '    <group id="' .. escapeXML(groupId) .. '" '
+    for groupObjectId, groupData in pairs(data.groups) do
+        xml = xml .. '    <group id="' .. escapeXML(groupObjectId) .. '" '
         xml = xml .. 'name="' .. escapeXML(groupData.name) .. '" '
         xml = xml .. 'category="' .. escapeXML(groupData.category) .. '" '
         xml = xml .. 'coalition="' .. escapeXML(groupData.coalition) .. '" '
@@ -215,11 +197,11 @@ local function writeXMLFile(data)
     xml = xml .. '  <units>\n'
     local unitCount = 0
     local activeUnitCount = 0
-    for unitId, unitData in pairs(data.units) do
-        xml = xml .. '    <unit id="' .. escapeXML(unitId) .. '" '
+    for unitObjectId, unitData in pairs(data.units) do
+        xml = xml .. '    <unit id="' .. escapeXML(unitObjectId) .. '" '
         xml = xml .. 'name="' .. escapeXML(unitData.name) .. '" '
         xml = xml .. 'type="' .. escapeXML(unitData.type) .. '" '
-        xml = xml .. 'group_id="' .. escapeXML(unitData.groupId) .. '" '
+        xml = xml .. 'group_id="' .. escapeXML(unitData.groupObjectId) .. '" '
         xml = xml .. 'group_name="' .. escapeXML(unitData.groupName) .. '" '
         xml = xml .. 'coalition="' .. escapeXML(unitData.coalition) .. '" '
         xml = xml .. 'first_seen="' .. escapeXML(unitData.firstSeen) .. '" '
@@ -234,21 +216,17 @@ local function writeXMLFile(data)
     
     xml = xml .. '</dcs_mapping>\n'
     
-    debugMsg("Outputting aggregated XML with " .. groupCount .. " total groups (" .. activeGroupCount .. " active) and " .. 
-             unitCount .. " total units (" .. activeUnitCount .. " active) to DCS log...")
+    debugMsg("XML logged: " .. groupCount .. " groups (" .. activeGroupCount .. " active), " .. 
+             unitCount .. " units (" .. activeUnitCount .. " active)")
     
     -- Output XML to DCS log with special markers for external parsing
     env.info("=== DCS_MAPPER_XML_START ===")
     env.info(xml)
     env.info("=== DCS_MAPPER_XML_END ===")
-    
-    debugMsg("Aggregated XML data successfully logged to DCS log (look for DCS_MAPPER_XML markers)")
 end
 
 -- Main update function
 local function updateMapping()
-    debugMsg("Starting mapping update cycle...")
-    
     local success, result = pcall(function()
         local data = getUnitsAndGroups()
         writeXMLFile(data)
@@ -258,13 +236,11 @@ local function updateMapping()
         local errorMsg = "Error updating unit/group mapping: " .. tostring(result)
         debugMsg("ERROR: " .. errorMsg)
         env.error(errorMsg)
-    else
-        debugMsg("Mapping update cycle completed successfully")
     end
 end
 
 -- Initial update
-debugMsg("DCS Unit/Group ID Mapper initializing...")
+debugMsg("DCS Mapper starting...")
 updateMapping()
 
 -- Schedule periodic updates
@@ -273,5 +249,5 @@ timer.scheduleFunction(function()
     return timer.getTime() + updateInterval
 end, nil, timer.getTime() + updateInterval)
 
-debugMsg("DCS Unit/Group ID Mapper started. Update interval: " .. updateInterval .. "s")
+debugMsg("DCS Mapper running (interval: " .. updateInterval .. "s)")
 env.info("DCS Unit/Group ID Mapper started. Logging to DCS log with XML markers") 
