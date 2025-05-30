@@ -56,16 +56,16 @@ local function getUnitsAndGroups()
         
         for _, group in ipairs(groups) do
             if group and group:isExist() then
-                local groupObjectId = group:getObjectID()
+                local groupId = group:getID()  -- Groups use getID(), not getObjectID()
                 local groupName = group:getName()
                 local groupCategory = group:getCategory()
                 
                 -- Mark this group as currently active
-                currentGroups[groupObjectId] = true
+                currentGroups[groupId] = true
                 
                 -- Add or update group in persistent table
-                if not allGroups[groupObjectId] then
-                    allGroups[groupObjectId] = {
+                if not allGroups[groupId] then
+                    allGroups[groupId] = {
                         name = groupName,
                         category = groupCategory,
                         coalition = coalitionSide,
@@ -76,15 +76,15 @@ local function getUnitsAndGroups()
                     newGroupsCount = newGroupsCount + 1
                 else
                     -- Update existing group
-                    allGroups[groupObjectId].lastSeen = currentTime
-                    allGroups[groupObjectId].active = true
+                    allGroups[groupId].lastSeen = currentTime
+                    allGroups[groupId].active = true
                 end
                 
                 -- Get all units in this group
                 local units = group:getUnits()
                 for _, unit in ipairs(units) do
                     if unit and unit:isExist() then
-                        local unitObjectId = unit:getObjectID()
+                        local unitObjectId = unit:getObjectID()  -- Units use getObjectID()
                         local unitName = unit:getName()
                         local unitType = unit:getTypeName()
                         
@@ -96,7 +96,7 @@ local function getUnitsAndGroups()
                             allUnits[unitObjectId] = {
                                 name = unitName,
                                 type = unitType,
-                                groupObjectId = groupObjectId,
+                                groupId = groupId,  -- Reference to group ID
                                 groupName = groupName,
                                 coalition = coalitionSide,
                                 firstSeen = currentTime,
@@ -122,8 +122,8 @@ local function getUnitsAndGroups()
         end
     end
     
-    for groupObjectId, groupData in pairs(allGroups) do
-        if not currentGroups[groupObjectId] then
+    for groupId, groupData in pairs(allGroups) do
+        if not currentGroups[groupId] then
             groupData.active = false
         end
     end
@@ -178,8 +178,8 @@ local function writeXMLFile(data)
     xml = xml .. '  <groups>\n'
     local groupCount = 0
     local activeGroupCount = 0
-    for groupObjectId, groupData in pairs(data.groups) do
-        xml = xml .. '    <group id="' .. escapeXML(groupObjectId) .. '" '
+    for groupId, groupData in pairs(data.groups) do
+        xml = xml .. '    <group id="' .. escapeXML(groupId) .. '" '
         xml = xml .. 'name="' .. escapeXML(groupData.name) .. '" '
         xml = xml .. 'category="' .. escapeXML(groupData.category) .. '" '
         xml = xml .. 'coalition="' .. escapeXML(groupData.coalition) .. '" '
@@ -201,7 +201,7 @@ local function writeXMLFile(data)
         xml = xml .. '    <unit id="' .. escapeXML(unitObjectId) .. '" '
         xml = xml .. 'name="' .. escapeXML(unitData.name) .. '" '
         xml = xml .. 'type="' .. escapeXML(unitData.type) .. '" '
-        xml = xml .. 'group_id="' .. escapeXML(unitData.groupObjectId) .. '" '
+        xml = xml .. 'group_id="' .. escapeXML(unitData.groupId) .. '" '
         xml = xml .. 'group_name="' .. escapeXML(unitData.groupName) .. '" '
         xml = xml .. 'coalition="' .. escapeXML(unitData.coalition) .. '" '
         xml = xml .. 'first_seen="' .. escapeXML(unitData.firstSeen) .. '" '
