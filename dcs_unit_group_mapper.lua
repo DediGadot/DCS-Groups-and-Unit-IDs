@@ -88,13 +88,26 @@ local function getUnitsAndGroups()
                         local unitName = unit:getName()
                         local unitType = unit:getTypeName()
                         
+                        -- Check if unit is controlled by a player
+                        local playerName = unit:getPlayerName()
+                        local displayName = unitName  -- Default to unit name
+                        local isPlayerControlled = false
+                        
+                        if playerName then
+                            displayName = playerName  -- Use player name if available
+                            isPlayerControlled = true
+                        end
+                        
                         -- Mark this unit as currently active
                         currentUnits[unitObjectId] = true
                         
                         -- Add or update unit in persistent table
                         if not allUnits[unitObjectId] then
                             allUnits[unitObjectId] = {
-                                name = unitName,
+                                name = unitName,  -- Keep original unit name
+                                displayName = displayName,  -- Player name or unit name
+                                playerName = playerName,  -- Player name (nil if AI)
+                                isPlayerControlled = isPlayerControlled,
                                 type = unitType,
                                 groupId = groupId,  -- Reference to group ID
                                 groupName = groupName,
@@ -108,6 +121,10 @@ local function getUnitsAndGroups()
                             -- Update existing unit
                             allUnits[unitObjectId].lastSeen = currentTime
                             allUnits[unitObjectId].active = true
+                            -- Update player control status (players can take control or leave)
+                            allUnits[unitObjectId].playerName = playerName
+                            allUnits[unitObjectId].isPlayerControlled = isPlayerControlled
+                            allUnits[unitObjectId].displayName = displayName
                         end
                     end
                 end
@@ -200,6 +217,11 @@ local function writeXMLFile(data)
     for unitObjectId, unitData in pairs(data.units) do
         xml = xml .. '    <unit id="' .. escapeXML(unitObjectId) .. '" '
         xml = xml .. 'name="' .. escapeXML(unitData.name) .. '" '
+        xml = xml .. 'display_name="' .. escapeXML(unitData.displayName) .. '" '
+        if unitData.playerName then
+            xml = xml .. 'player_name="' .. escapeXML(unitData.playerName) .. '" '
+        end
+        xml = xml .. 'is_player_controlled="' .. escapeXML(tostring(unitData.isPlayerControlled)) .. '" '
         xml = xml .. 'type="' .. escapeXML(unitData.type) .. '" '
         xml = xml .. 'group_id="' .. escapeXML(unitData.groupId) .. '" '
         xml = xml .. 'group_name="' .. escapeXML(unitData.groupName) .. '" '
