@@ -32,6 +32,24 @@ local function debugMsg(message)
     end
 end
 
+-- Function to get count of active/inactive entities
+local function getEntityCounts(entityTable)
+    local total = 0
+    local active = 0
+    local inactive = 0
+    
+    for _, entityData in pairs(entityTable) do
+        total = total + 1
+        if entityData.active then
+            active = active + 1
+        else
+            inactive = inactive + 1
+        end
+    end
+    
+    return total, active, inactive
+end
+
 -- Function to escape XML special characters
 local function escapeXML(str)
     if not str then return "" end
@@ -345,26 +363,63 @@ local function writeXMLFile(data)
     
     -- Output XML to DCS log with special markers for external parsing
     env.info("=== DCS_MAPPER_XML_START ===")
-    env.info(xml)
+    
+    -- Log XML in chunks if it's very large (DCS may have log line limits)
+    local xmlLength = string.len(xml)
+    debugMsg("XML generated: " .. xmlLength .. " characters")
+    
+    if xmlLength > 1000 then
+        debugMsg("XML is large (" .. xmlLength .. " chars), logging in chunks...")
+        -- Split XML into chunks for logging
+        local chunkSize = 1000
+        local chunks = math.ceil(xmlLength / chunkSize)
+        
+        for i = 1, chunks do
+            local startPos = (i - 1) * chunkSize + 1
+            local endPos = math.min(i * chunkSize, xmlLength)
+            local chunk = string.sub(xml, startPos, endPos)
+            env.info("XML_CHUNK_" .. i .. "_OF_" .. chunks .. ": " .. chunk)
+        end
+    else
+        env.info(xml)
+    end
+    
     env.info("=== DCS_MAPPER_XML_END ===")
+    
+    -- Additional verification log
+    env.info("DCS_MAPPER_VERIFY: XML written with " .. xmlLength .. " characters, " .. 
+             groupCount .. " groups, " .. unitCount .. " units")
 end
 
 -- Main update function
 local function updateMapping()
+    debugMsg("Starting updateMapping() function...")
+    
     local success, result = pcall(function()
+        debugMsg("About to call getUnitsAndGroups()...")
         local data = getUnitsAndGroups()
+        debugMsg("getUnitsAndGroups() completed successfully")
+        
+        debugMsg("About to call writeXMLFile()...")
         writeXMLFile(data)
+        debugMsg("writeXMLFile() completed successfully")
     end)
     
     if not success then
         local errorMsg = "Error updating unit/group mapping: " .. tostring(result)
         debugMsg("ERROR: " .. errorMsg)
         env.error(errorMsg)
+        
+        -- Force a simple test log entry to verify logging is working
+        env.info("DCS_MAPPER_ERROR_TEST: If you see this, logging is working but there's a script error")
+    else
+        debugMsg("updateMapping() completed successfully")
     end
 end
 
 -- Initial update
 debugMsg("DCS Mapper starting...")
+env.info("DCS_MAPPER_STARTUP: Script initialization beginning")
 updateMapping()
 
 -- Schedule periodic updates
@@ -374,22 +429,4 @@ timer.scheduleFunction(function()
 end, nil, timer.getTime() + updateInterval)
 
 debugMsg("DCS Mapper running (interval: " .. updateInterval .. "s)")
-env.info("DCS Unit/Group ID Mapper started. Logging to DCS log with XML markers")
-
--- Function to get count of active/inactive entities
-local function getEntityCounts(entityTable)
-    local total = 0
-    local active = 0
-    local inactive = 0
-    
-    for _, entityData in pairs(entityTable) do
-        total = total + 1
-        if entityData.active then
-            active = active + 1
-        else
-            inactive = inactive + 1
-        end
-    end
-    
-    return total, active, inactive
-end 
+env.info("DCS Unit/Group ID Mapper started. Logging to DCS log with XML markers") 
