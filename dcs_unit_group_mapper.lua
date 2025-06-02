@@ -9,6 +9,11 @@ local allUnits = {}
 local allGroups = {}
 local lastUpdateTime = 0
 
+-- Debug counters to track script behavior
+local updateCounter = 0
+local totalUnitsEverSeen = 0
+local totalGroupsEverSeen = 0
+
 -- Function to output debug messages to both outMessage and log
 local function debugMsg(message)
     if DEBUG then
@@ -46,13 +51,26 @@ local function getUnitsAndGroups()
     local currentGroups = {}
     local newUnitsCount = 0
     local newGroupsCount = 0
+    local playerUnitsFound = 0
+    local coalitionCounts = {RED = 0, BLUE = 0, NEUTRAL = 0}
+    
+    updateCounter = updateCounter + 1
+    debugMsg("=== UPDATE #" .. updateCounter .. " START ===")
     
     -- Get all coalitions
     local coalitions = {coalition.side.RED, coalition.side.BLUE, coalition.side.NEUTRAL}
+    local coalitionNames = {"RED", "BLUE", "NEUTRAL"}
     
-    for _, coalitionSide in ipairs(coalitions) do
+    for i, coalitionSide in ipairs(coalitions) do
+        local coalitionName = coalitionNames[i]
+        debugMsg("Scanning coalition: " .. coalitionName)
+        
         -- Get all groups for this coalition
         local groups = coalition.getGroups(coalitionSide)
+        local groupsInCoalition = #groups
+        coalitionCounts[coalitionName] = groupsInCoalition
+        
+        debugMsg("Found " .. groupsInCoalition .. " groups in " .. coalitionName .. " coalition")
         
         for _, group in ipairs(groups) do
             if group and group:isExist() then
@@ -74,6 +92,8 @@ local function getUnitsAndGroups()
                         active = true
                     }
                     newGroupsCount = newGroupsCount + 1
+                    totalGroupsEverSeen = totalGroupsEverSeen + 1
+                    debugMsg("NEW GROUP: ID=" .. groupId .. ", Name='" .. groupName .. "', Coalition=" .. coalitionName)
                 else
                     -- Update existing group
                     allGroups[groupId].lastSeen = currentTime
@@ -82,6 +102,9 @@ local function getUnitsAndGroups()
                 
                 -- Get all units in this group
                 local units = group:getUnits()
+                local unitsInGroup = #units
+                debugMsg("Group '" .. groupName .. "' has " .. unitsInGroup .. " units")
+                
                 for _, unit in ipairs(units) do
                     if unit and unit:isExist() then
                         local unitObjectId = unit:getObjectID()  -- Units use getObjectID()
@@ -96,6 +119,8 @@ local function getUnitsAndGroups()
                         if playerName then
                             displayName = playerName  -- Use player name if available
                             isPlayerControlled = true
+                            playerUnitsFound = playerUnitsFound + 1
+                            debugMsg("PLAYER UNIT FOUND: '" .. unitName .. "' controlled by player '" .. playerName .. "'")
                         end
                         
                         -- Mark this unit as currently active
@@ -117,14 +142,26 @@ local function getUnitsAndGroups()
                                 active = true
                             }
                             newUnitsCount = newUnitsCount + 1
+                            totalUnitsEverSeen = totalUnitsEverSeen + 1
+                            debugMsg("NEW UNIT: ID=" .. unitObjectId .. ", Name='" .. unitName .. "', Type=" .. unitType .. ", Player=" .. tostring(isPlayerControlled))
                         else
                             -- Update existing unit
+                            local wasPlayerControlled = allUnits[unitObjectId].isPlayerControlled
                             allUnits[unitObjectId].lastSeen = currentTime
                             allUnits[unitObjectId].active = true
                             -- Update player control status (players can take control or leave)
                             allUnits[unitObjectId].playerName = playerName
                             allUnits[unitObjectId].isPlayerControlled = isPlayerControlled
                             allUnits[unitObjectId].displayName = displayName
+                            
+                            -- Debug player control changes
+                            if wasPlayerControlled ~= isPlayerControlled then
+                                if isPlayerControlled then
+                                    debugMsg("PLAYER TOOK CONTROL: Unit '" .. unitName .. "' now controlled by '" .. playerName .. "'")
+                                else
+                                    debugMsg("PLAYER LEFT UNIT: Unit '" .. unitName .. "' is now AI-controlled")
+                                end
+                            end
                         end
                     end
                 end
@@ -133,43 +170,43 @@ local function getUnitsAndGroups()
     end
     
     -- Mark units and groups that are no longer active
+    local deactivatedUnits = 0
+    local deactivatedGroups = 0
+    
     for unitObjectId, unitData in pairs(allUnits) do
         if not currentUnits[unitObjectId] then
+            if unitData.active then
+                deactivatedUnits = deactivatedUnits + 1
+                debugMsg("UNIT DEACTIVATED: '" .. unitData.name .. "' (ID=" .. unitObjectId .. ")")
+            end
             unitData.active = false
         end
     end
     
     for groupId, groupData in pairs(allGroups) do
         if not currentGroups[groupId] then
+            if groupData.active then
+                deactivatedGroups = deactivatedGroups + 1
+                debugMsg("GROUP DEACTIVATED: '" .. groupData.name .. "' (ID=" .. groupId .. ")")
+            end
             groupData.active = false
         end
     end
     
-    local totalGroups = 0
-    local activeGroups = 0
-    for _, _ in pairs(allGroups) do
-        totalGroups = totalGroups + 1
-    end
-    for _, groupData in pairs(allGroups) do
-        if groupData.active then
-            activeGroups = activeGroups + 1
-        end
-    end
+    -- Get final counts
+    local totalGroups, activeGroups, inactiveGroups = getEntityCounts(allGroups)
+    local totalUnits, activeUnits, inactiveUnits = getEntityCounts(allUnits)
     
-    local totalUnits = 0
-    local activeUnits = 0
-    for _, _ in pairs(allUnits) do
-        totalUnits = totalUnits + 1
-    end
-    for _, unitData in pairs(allUnits) do
-        if unitData.active then
-            activeUnits = activeUnits + 1
-        end
-    end
-    
-    if newGroupsCount > 0 or newUnitsCount > 0 then
-        debugMsg("New discoveries: " .. newGroupsCount .. " groups, " .. newUnitsCount .. " units")
-    end
+    -- Comprehensive debug summary
+    debugMsg("=== SCAN SUMMARY ===")
+    debugMsg("Coalition distribution: RED=" .. coalitionCounts.RED .. ", BLUE=" .. coalitionCounts.BLUE .. ", NEUTRAL=" .. coalitionCounts.NEUTRAL)
+    debugMsg("New discoveries this scan: " .. newGroupsCount .. " groups, " .. newUnitsCount .. " units")
+    debugMsg("Deactivated this scan: " .. deactivatedGroups .. " groups, " .. deactivatedUnits .. " units")
+    debugMsg("Player units currently active: " .. playerUnitsFound)
+    debugMsg("PERSISTENT TOTALS: Groups=" .. totalGroups .. " (" .. activeGroups .. " active, " .. inactiveGroups .. " inactive)")
+    debugMsg("PERSISTENT TOTALS: Units=" .. totalUnits .. " (" .. activeUnits .. " active, " .. inactiveUnits .. " inactive)")
+    debugMsg("EVER SEEN TOTALS: " .. totalGroupsEverSeen .. " groups, " .. totalUnitsEverSeen .. " units")
+    debugMsg("=== UPDATE #" .. updateCounter .. " END ===")
     
     lastUpdateTime = currentTime
     
@@ -188,13 +225,17 @@ local function writeXMLFile(data)
     local seconds = totalSeconds % 60
     local timestamp = string.format("Mission Time %02d:%02d:%02d", hours, minutes, seconds)
     
+    debugMsg("=== XML GENERATION START ===")
+    
     local xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
-    xml = xml .. '<dcs_mapping timestamp="' .. escapeXML(timestamp) .. '" mission_time="' .. escapeXML(missionTime) .. '">\n'
+    xml = xml .. '<dcs_mapping timestamp="' .. escapeXML(timestamp) .. '" mission_time="' .. escapeXML(missionTime) .. '" update_number="' .. escapeXML(updateCounter) .. '">\n'
     
     -- Write groups section
     xml = xml .. '  <groups>\n'
     local groupCount = 0
     local activeGroupCount = 0
+    local coalitionGroupCounts = {RED = 0, BLUE = 0, NEUTRAL = 0}
+    
     for groupId, groupData in pairs(data.groups) do
         xml = xml .. '    <group id="' .. escapeXML(groupId) .. '" '
         xml = xml .. 'name="' .. escapeXML(groupData.name) .. '" '
@@ -207,6 +248,15 @@ local function writeXMLFile(data)
         if groupData.active then
             activeGroupCount = activeGroupCount + 1
         end
+        
+        -- Count by coalition for validation
+        if groupData.coalition == coalition.side.RED then
+            coalitionGroupCounts.RED = coalitionGroupCounts.RED + 1
+        elseif groupData.coalition == coalition.side.BLUE then
+            coalitionGroupCounts.BLUE = coalitionGroupCounts.BLUE + 1
+        elseif groupData.coalition == coalition.side.NEUTRAL then
+            coalitionGroupCounts.NEUTRAL = coalitionGroupCounts.NEUTRAL + 1
+        end
     end
     xml = xml .. '  </groups>\n'
     
@@ -214,6 +264,10 @@ local function writeXMLFile(data)
     xml = xml .. '  <units>\n'
     local unitCount = 0
     local activeUnitCount = 0
+    local playerUnitCount = 0
+    local activePlayerUnitCount = 0
+    local coalitionUnitCounts = {RED = 0, BLUE = 0, NEUTRAL = 0}
+    
     for unitObjectId, unitData in pairs(data.units) do
         xml = xml .. '    <unit id="' .. escapeXML(unitObjectId) .. '" '
         xml = xml .. 'name="' .. escapeXML(unitData.name) .. '" '
@@ -233,13 +287,61 @@ local function writeXMLFile(data)
         if unitData.active then
             activeUnitCount = activeUnitCount + 1
         end
+        
+        -- Count player units
+        if unitData.isPlayerControlled then
+            playerUnitCount = playerUnitCount + 1
+            if unitData.active then
+                activePlayerUnitCount = activePlayerUnitCount + 1
+            end
+        end
+        
+        -- Count by coalition for validation
+        if unitData.coalition == coalition.side.RED then
+            coalitionUnitCounts.RED = coalitionUnitCounts.RED + 1
+        elseif unitData.coalition == coalition.side.BLUE then
+            coalitionUnitCounts.BLUE = coalitionUnitCounts.BLUE + 1
+        elseif unitData.coalition == coalition.side.NEUTRAL then
+            coalitionUnitCounts.NEUTRAL = coalitionUnitCounts.NEUTRAL + 1
+        end
     end
     xml = xml .. '  </units>\n'
     
+    -- Add summary metadata to XML
+    xml = xml .. '  <summary>\n'
+    xml = xml .. '    <stats total_groups="' .. groupCount .. '" active_groups="' .. activeGroupCount .. '" '
+    xml = xml .. 'total_units="' .. unitCount .. '" active_units="' .. activeUnitCount .. '" '
+    xml = xml .. 'player_units="' .. playerUnitCount .. '" active_player_units="' .. activePlayerUnitCount .. '" '
+    xml = xml .. 'groups_ever_seen="' .. totalGroupsEverSeen .. '" units_ever_seen="' .. totalUnitsEverSeen .. '"/>\n'
+    xml = xml .. '    <coalition_distribution>\n'
+    xml = xml .. '      <groups red="' .. coalitionGroupCounts.RED .. '" blue="' .. coalitionGroupCounts.BLUE .. '" neutral="' .. coalitionGroupCounts.NEUTRAL .. '"/>\n'
+    xml = xml .. '      <units red="' .. coalitionUnitCounts.RED .. '" blue="' .. coalitionUnitCounts.BLUE .. '" neutral="' .. coalitionUnitCounts.NEUTRAL .. '"/>\n'
+    xml = xml .. '    </coalition_distribution>\n'
+    xml = xml .. '  </summary>\n'
+    
     xml = xml .. '</dcs_mapping>\n'
     
+    -- Enhanced debug output with validation
+    debugMsg("XML VALIDATION RESULTS:")
+    debugMsg("Groups in XML: " .. groupCount .. " (should be >= previous runs)")
+    debugMsg("Units in XML: " .. unitCount .. " (should be >= previous runs)")
+    debugMsg("Player units in XML: " .. playerUnitCount .. " (" .. activePlayerUnitCount .. " active)")
+    debugMsg("Coalition distribution - Groups: R=" .. coalitionGroupCounts.RED .. " B=" .. coalitionGroupCounts.BLUE .. " N=" .. coalitionGroupCounts.NEUTRAL)
+    debugMsg("Coalition distribution - Units: R=" .. coalitionUnitCounts.RED .. " B=" .. coalitionUnitCounts.BLUE .. " N=" .. coalitionUnitCounts.NEUTRAL)
+    debugMsg("Superset check: Groups=" .. groupCount .. "/" .. totalGroupsEverSeen .. ", Units=" .. unitCount .. "/" .. totalUnitsEverSeen)
+    
+    -- Validate superset property
+    if groupCount ~= totalGroupsEverSeen then
+        debugMsg("ERROR: Group count mismatch! XML has " .. groupCount .. " but should have " .. totalGroupsEverSeen)
+    end
+    if unitCount ~= totalUnitsEverSeen then
+        debugMsg("ERROR: Unit count mismatch! XML has " .. unitCount .. " but should have " .. totalUnitsEverSeen)
+    end
+    
     debugMsg("XML logged: " .. groupCount .. " groups (" .. activeGroupCount .. " active), " .. 
-             unitCount .. " units (" .. activeUnitCount .. " active)")
+             unitCount .. " units (" .. activeUnitCount .. " active), " .. 
+             playerUnitCount .. " player units (" .. activePlayerUnitCount .. " active)")
+    debugMsg("=== XML GENERATION END ===")
     
     -- Output XML to DCS log with special markers for external parsing
     env.info("=== DCS_MAPPER_XML_START ===")
@@ -272,4 +374,22 @@ timer.scheduleFunction(function()
 end, nil, timer.getTime() + updateInterval)
 
 debugMsg("DCS Mapper running (interval: " .. updateInterval .. "s)")
-env.info("DCS Unit/Group ID Mapper started. Logging to DCS log with XML markers") 
+env.info("DCS Unit/Group ID Mapper started. Logging to DCS log with XML markers")
+
+-- Function to get count of active/inactive entities
+local function getEntityCounts(entityTable)
+    local total = 0
+    local active = 0
+    local inactive = 0
+    
+    for _, entityData in pairs(entityTable) do
+        total = total + 1
+        if entityData.active then
+            active = active + 1
+        else
+            inactive = inactive + 1
+        end
+    end
+    
+    return total, active, inactive
+end 
